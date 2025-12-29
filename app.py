@@ -3,17 +3,17 @@ from utils.pdf_merge import merge_pdfs
 from utils.split import split_pdf
 from utils.rotate import rotate_pdf
 
-
 st.set_page_config(page_title="Quick PDF Tools", layout="centered")
 
 st.title("Quick PDF Tools")
-st.write("Free PDF merge, split, and rotate. No signup required.")
+st.write("Free PDF merge, split, rotate, and sign. No signup required.")
 
 tool = st.selectbox(
     "Choose a tool",
     ["Merge PDF", "Split PDF", "Rotate PDF", "Edit / Sign PDF"]
 )
 
+# ---------------- Merge PDF ----------------
 if tool == "Merge PDF":
     uploaded_files = st.file_uploader(
         "Upload PDF files",
@@ -29,6 +29,7 @@ if tool == "Merge PDF":
             mime="application/pdf"
         )
 
+# ---------------- Split PDF ----------------
 elif tool == "Split PDF":
     uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
     page_range = st.text_input("Page range (e.g. 1-3)")
@@ -41,6 +42,7 @@ elif tool == "Split PDF":
             mime="application/pdf"
         )
 
+# ---------------- Rotate PDF ----------------
 elif tool == "Rotate PDF":
     uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
     angle = st.selectbox("Rotation angle", [90, 180, 270])
@@ -53,12 +55,11 @@ elif tool == "Rotate PDF":
             mime="application/pdf"
         )
 
-# -------- Edit / Sign PDF --------
-if tool == "Edit / Sign PDF":
-    import io
+# ---------------- Edit / Sign PDF ----------------
+elif tool == "Edit / Sign PDF":
     import tempfile
     import numpy as np
-    import fitz  # pymupdf
+    import fitz  # PyMuPDF
     from PIL import Image
     from pypdf import PdfReader
     from streamlit_drawable_canvas import st_canvas
@@ -67,7 +68,7 @@ if tool == "Edit / Sign PDF":
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
     if uploaded_file:
-        # Read PDF with pypdf for metadata (page count + page size in points)
+        # Read PDF metadata
         pdf_reader = PdfReader(uploaded_file)
         total_pages = len(pdf_reader.pages)
 
@@ -81,23 +82,22 @@ if tool == "Edit / Sign PDF":
         # Pen controls
         col1, col2 = st.columns(2)
         with col1:
-            stroke_width = st.slider("Pen size", min_value=1, max_value=12, value=3)
+            stroke_width = st.slider("Pen size", 1, 12, 3)
         with col2:
-            stroke_color = st.color_picker("Pen color", value="#000000")
+            stroke_color = st.color_picker("Pen color", "#000000")
 
-        # Render selected page to an image preview using PyMuPDF
+        # Render selected page as image
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         page = doc.load_page(page_num - 1)
 
-        # Render at a moderate zoom for clarity; we will display resized if needed
         zoom = 2.0
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat, alpha=False)
         page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-        # Resize preview to a reasonable width for UI, keeping aspect ratio
+        # Resize for UI
         max_w = 900
         if page_img.width > max_w:
             new_h = int(page_img.height * (max_w / page_img.width))
@@ -105,45 +105,44 @@ if tool == "Edit / Sign PDF":
         else:
             page_img_disp = page_img
 
-        st.caption("Draw directly on the page preview below. Only your ink will be applied (no white box).")
+        st.caption("Draw directly on the page preview. Only your ink will be applied (no white box).")
 
-        # Save page preview to a temporary PNG for Streamlit Cloud compatibility
+        # Save background image to temp file (REQUIRED for Streamlit Cloud)
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as bg_tmp:
-        page_img_disp.save(bg_tmp.name)
-        bg_image_path = bg_tmp.name
+            page_img_disp.save(bg_tmp.name)
+            bg_image_path = bg_tmp.name
 
         canvas_result = st_canvas(
-        background_image=bg_image_path,   # <-- FILE PATH, NOT PIL IMAGE
-        height=page_img_disp.height,
-        width=page_img_disp.width,
-        drawing_mode="freedraw",
-        stroke_width=stroke_width,
-        stroke_color=stroke_color,
-        key="sign_canvas_v4",
+            background_image=bg_image_path,
+            height=page_img_disp.height,
+            width=page_img_disp.width,
+            drawing_mode="freedraw",
+            stroke_width=stroke_width,
+            stroke_color=stroke_color,
+            key="sign_canvas_v4",
         )
-
 
         if st.button("Apply Signature"):
             if canvas_result.image_data is None:
                 st.error("No drawing detected.")
             else:
-                # Convert background to numpy for ink extraction
+                # Extract ink only
                 bg_np = np.array(page_img_disp, dtype=np.uint8)
                 canvas_np = canvas_result.image_data.astype(np.uint8)
 
-                # Extract only ink strokes as transparent RGBA
-                ink_img = extract_ink_overlay(canvas_np, bg_np, diff_threshold=12)
+                ink_img = extract_ink_overlay(
+                    canvas_np,
+                    bg_np,
+                    diff_threshold=12
+                )
 
-                # Save overlay PNG
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     ink_img.save(tmp.name)
 
-                    # Get true PDF page size in points (for correct full-page overlay)
                     p = pdf_reader.pages[page_num - 1]
                     page_w_pt = float(p.mediabox.width)
                     page_h_pt = float(p.mediabox.height)
 
-                    # Apply as full-page overlay (scaled to PDF page)
                     uploaded_file.seek(0)
                     output_pdf = apply_overlay_fullpage(
                         uploaded_file,
