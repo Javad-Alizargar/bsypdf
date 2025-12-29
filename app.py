@@ -107,15 +107,21 @@ if tool == "Edit / Sign PDF":
 
         st.caption("Draw directly on the page preview below. Only your ink will be applied (no white box).")
 
+        # Save page preview to a temporary PNG for Streamlit Cloud compatibility
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as bg_tmp:
+        page_img_disp.save(bg_tmp.name)
+        bg_image_path = bg_tmp.name
+
         canvas_result = st_canvas(
-            background_image=page_img_disp,
-            height=page_img_disp.height,
-            width=page_img_disp.width,
-            drawing_mode="freedraw",
-            stroke_width=stroke_width,
-            stroke_color=stroke_color,
-            key="sign_canvas_v4",
+        background_image=bg_image_path,   # <-- FILE PATH, NOT PIL IMAGE
+        height=page_img_disp.height,
+        width=page_img_disp.width,
+        drawing_mode="freedraw",
+        stroke_width=stroke_width,
+        stroke_color=stroke_color,
+        key="sign_canvas_v4",
         )
+
 
         if st.button("Apply Signature"):
             if canvas_result.image_data is None:
