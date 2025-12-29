@@ -1,7 +1,8 @@
 import streamlit as st
-from utils.merge import merge_pdfs
+from utils.pdf_merge import merge_pdfs
 from utils.split import split_pdf
 from utils.rotate import rotate_pdf
+from utils.pdf_merge import merge_pdfs
 
 st.set_page_config(page_title="Quick PDF Tools", layout="centered")
 
