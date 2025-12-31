@@ -59,16 +59,15 @@ elif tool == "Rotate PDF":
 elif tool == "Edit / Sign PDF":
     import numpy as np
     import fitz  # PyMuPDF
+    import tempfile
     from PIL import Image
     from pypdf import PdfReader
     from streamlit_drawable_canvas import st_canvas
     from utils.edit import apply_overlay_fullpage, extract_ink_overlay
-    import tempfile
 
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
     if uploaded_file:
-        # Read PDF metadata
         pdf_reader = PdfReader(uploaded_file)
         total_pages = len(pdf_reader.pages)
 
@@ -79,25 +78,22 @@ elif tool == "Edit / Sign PDF":
             value=1
         )
 
-        # Pen controls
         col1, col2 = st.columns(2)
         with col1:
             stroke_width = st.slider("Pen size", 1, 12, 3)
         with col2:
             stroke_color = st.color_picker("Pen color", "#000000")
 
-        # Render selected page to PIL Image
+        # Render PDF page
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         page = doc.load_page(page_num - 1)
 
         zoom = 2.0
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat, alpha=False)
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-        # Resize for UI
         max_w = 900
         if page_img.width > max_w:
             new_h = int(page_img.height * (max_w / page_img.width))
@@ -105,31 +101,28 @@ elif tool == "Edit / Sign PDF":
         else:
             page_img_disp = page_img
 
-        st.caption("Draw directly on the page preview. Only your ink will be applied (no white box).")
+        st.subheader("Page preview")
+        st.image(page_img_disp, use_column_width=False)
 
-        # ✅ PASS PIL IMAGE DIRECTLY (FIX)
+        st.subheader("Draw signature below (same size area)")
         canvas_result = st_canvas(
-            background_image=page_img_disp,
             height=page_img_disp.height,
             width=page_img_disp.width,
             drawing_mode="freedraw",
             stroke_width=stroke_width,
             stroke_color=stroke_color,
-            key="sign_canvas_v4",
+            background_color="rgba(0,0,0,0)",
+            key="sign_canvas_final",
         )
 
         if st.button("Apply Signature"):
             if canvas_result.image_data is None:
                 st.error("No drawing detected.")
             else:
-                bg_np = np.array(page_img_disp, dtype=np.uint8)
+                bg_np = np.zeros_like(canvas_result.image_data[..., :3], dtype=np.uint8)
                 canvas_np = canvas_result.image_data.astype(np.uint8)
 
-                ink_img = extract_ink_overlay(
-                    canvas_np,
-                    bg_np,
-                    diff_threshold=12
-                )
+                ink_img = extract_ink_overlay(canvas_np, bg_np, diff_threshold=1)
 
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     ink_img.save(tmp.name)
