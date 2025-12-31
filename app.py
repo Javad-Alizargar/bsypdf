@@ -57,13 +57,13 @@ elif tool == "Rotate PDF":
 
 # ---------------- Edit / Sign PDF ----------------
 elif tool == "Edit / Sign PDF":
-    import tempfile
     import numpy as np
     import fitz  # PyMuPDF
     from PIL import Image
     from pypdf import PdfReader
     from streamlit_drawable_canvas import st_canvas
     from utils.edit import apply_overlay_fullpage, extract_ink_overlay
+    import tempfile
 
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
@@ -86,7 +86,7 @@ elif tool == "Edit / Sign PDF":
         with col2:
             stroke_color = st.color_picker("Pen color", "#000000")
 
-        # Render selected page as image
+        # Render selected page to PIL Image
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -107,13 +107,9 @@ elif tool == "Edit / Sign PDF":
 
         st.caption("Draw directly on the page preview. Only your ink will be applied (no white box).")
 
-        # Save background image to temp file (REQUIRED for Streamlit Cloud)
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as bg_tmp:
-            page_img_disp.save(bg_tmp.name)
-            bg_image_path = bg_tmp.name
-
+        # ✅ PASS PIL IMAGE DIRECTLY (FIX)
         canvas_result = st_canvas(
-            background_image=bg_image_path,
+            background_image=page_img_disp,
             height=page_img_disp.height,
             width=page_img_disp.width,
             drawing_mode="freedraw",
@@ -126,7 +122,6 @@ elif tool == "Edit / Sign PDF":
             if canvas_result.image_data is None:
                 st.error("No drawing detected.")
             else:
-                # Extract ink only
                 bg_np = np.array(page_img_disp, dtype=np.uint8)
                 canvas_np = canvas_result.image_data.astype(np.uint8)
 
