@@ -68,66 +68,69 @@ elif tool == "Edit / Sign PDF":
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
     if uploaded_file:
+        # ---- Persist page number ----
+        if "page_num" not in st.session_state:
+            st.session_state.page_num = 1
+
         pdf_reader = PdfReader(uploaded_file)
         total_pages = len(pdf_reader.pages)
 
-        page_num = st.number_input(
+        st.session_state.page_num = st.number_input(
             "Select page number",
             min_value=1,
             max_value=total_pages,
-            value=1
+            value=st.session_state.page_num,
+            step=1
         )
 
+        # ---- Pen controls ----
         col1, col2 = st.columns(2)
         with col1:
             stroke_width = st.slider("Pen size", 1, 12, 3)
         with col2:
             stroke_color = st.color_picker("Pen color", "#000000")
 
-        # Render PDF page
+        # ---- Render selected page ----
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        page = doc.load_page(page_num - 1)
+        page = doc.load_page(st.session_state.page_num - 1)
 
         zoom = 2.0
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+
         page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-        max_w = 900
-        if page_img.width > max_w:
-            new_h = int(page_img.height * (max_w / page_img.width))
-            page_img_disp = page_img.resize((max_w, new_h))
-        else:
-            page_img_disp = page_img
+        st.subheader(f"Page {st.session_state.page_num} preview")
+        st.image(page_img)
 
-        st.subheader("Page preview")
-        st.image(page_img_disp, use_column_width=False)
-
-        st.subheader("Draw signature below (same size area)")
+        # ---- Canvas EXACTLY matches page ----
         canvas_result = st_canvas(
-            height=page_img_disp.height,
-            width=page_img_disp.width,
+            height=page_img.height,
+            width=page_img.width,
             drawing_mode="freedraw",
             stroke_width=stroke_width,
             stroke_color=stroke_color,
             background_color="rgba(0,0,0,0)",
-            key="sign_canvas_final",
+            key=f"canvas_page_{st.session_state.page_num}",
         )
 
         if st.button("Apply Signature"):
             if canvas_result.image_data is None:
                 st.error("No drawing detected.")
             else:
-                bg_np = np.zeros_like(canvas_result.image_data[..., :3], dtype=np.uint8)
                 canvas_np = canvas_result.image_data.astype(np.uint8)
+
+                # Transparent background for correct ink extraction
+                bg_np = np.zeros_like(canvas_np[..., :3], dtype=np.uint8)
 
                 ink_img = extract_ink_overlay(canvas_np, bg_np, diff_threshold=1)
 
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     ink_img.save(tmp.name)
 
-                    p = pdf_reader.pages[page_num - 1]
+                    p = pdf_reader.pages[st.session_state.page_num - 1]
                     page_w_pt = float(p.mediabox.width)
                     page_h_pt = float(p.mediabox.height)
 
@@ -135,7 +138,7 @@ elif tool == "Edit / Sign PDF":
                     output_pdf = apply_overlay_fullpage(
                         uploaded_file,
                         tmp.name,
-                        page_num - 1,
+                        st.session_state.page_num - 1,
                         page_w_pt,
                         page_h_pt
                     )
