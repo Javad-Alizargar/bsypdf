@@ -1,7 +1,7 @@
 streamlit
 pypdf
-streamlit-drawable-canvas
-Pillow
-reportlab
 pymupdf
 numpy
+Pillow
+reportlab
+streamlit-drawable-canvas==0.9.3
