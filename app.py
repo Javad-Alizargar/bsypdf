@@ -55,7 +55,7 @@ elif tool == "Rotate PDF":
             mime="application/pdf"
         )
 
-# ---------------- Edit / Sign PDF ----------------
+# ---------------- Edit / Sign PDF (OPTION A) ----------------
 elif tool == "Edit / Sign PDF":
     import numpy as np
     import fitz  # PyMuPDF
@@ -63,7 +63,7 @@ elif tool == "Edit / Sign PDF":
     from PIL import Image
     from pypdf import PdfReader
     from streamlit_drawable_canvas import st_canvas
-    from utils.edit import apply_overlay_fullpage, extract_ink_overlay
+    from utils.edit import apply_overlay_fullpage
 
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
@@ -90,22 +90,22 @@ elif tool == "Edit / Sign PDF":
         with col2:
             stroke_color = st.color_picker("Pen color", "#000000")
 
-        # ---- Render selected page ----
+        # ---- Render selected page (preview only) ----
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         page = doc.load_page(st.session_state.page_num - 1)
 
         zoom = 2.0
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-        st.subheader(f"Page {st.session_state.page_num} preview")
-        st.image(page_img)
+        st.subheader(f"Page {st.session_state.page_num} preview (read-only)")
+        st.image(page_img, use_column_width=True)
 
-        # ---- Canvas EXACTLY matches page ----
+        st.subheader("Sign here (applied to selected page)")
+
+        # ---- Signing canvas (same aspect, separate area) ----
         canvas_result = st_canvas(
             height=page_img.height,
             width=page_img.width,
@@ -120,12 +120,9 @@ elif tool == "Edit / Sign PDF":
             if canvas_result.image_data is None:
                 st.error("No drawing detected.")
             else:
+                # EVERYTHING drawn is ink
                 canvas_np = canvas_result.image_data.astype(np.uint8)
-
-                # Transparent background for correct ink extraction
-                bg_np = np.zeros_like(canvas_np[..., :3], dtype=np.uint8)
-
-                ink_img = extract_ink_overlay(canvas_np, bg_np, diff_threshold=1)
+                ink_img = Image.fromarray(canvas_np, mode="RGBA")
 
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     ink_img.save(tmp.name)
@@ -143,6 +140,7 @@ elif tool == "Edit / Sign PDF":
                         page_h_pt
                     )
 
+                st.success("Signature applied to PDF.")
                 st.download_button(
                     "Download signed PDF",
                     output_pdf,
